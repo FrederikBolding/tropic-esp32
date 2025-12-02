@@ -6,10 +6,16 @@
     holding buffers for the duration of a data transfer."
 )]
 
+use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
+use esp_hal::gpio::{Output, OutputConfig};
 use esp_hal::main;
+use esp_hal::spi::master::{Config, Spi};
 use esp_hal::time::{Duration, Instant};
+use esp_hal::delay::Delay;
+use esp_println::println;
+use tropic01::Tropic01;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -17,15 +23,28 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 #[main]
 fn main() -> ! {
-    // generator version: 1.0.1
-
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
-    let _peripherals = esp_hal::init(config);
+    let peripherals = esp_hal::init(config);
 
+    let spi_bus = Spi::new(peripherals.SPI2, Config::default()).unwrap();
+
+    let cs = Output::new(peripherals.GPIO10, esp_hal::gpio::Level::High, OutputConfig::default());
+
+    let delay = Delay::new();
+
+    let spi = ExclusiveDevice::new(spi_bus, cs, delay).unwrap();
+
+    let mut tropic = Tropic01::new(spi);
+
+    let chip_id = tropic.get_info_chip_id();
+
+    if let Ok(chip_id) = chip_id {
+        println!("Chip ID: {:?}", chip_id);
+    }
+
+    println!("Sleeping...");
     loop {
         let delay_start = Instant::now();
         while delay_start.elapsed() < Duration::from_millis(500) {}
     }
-
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0/examples/src/bin
 }
