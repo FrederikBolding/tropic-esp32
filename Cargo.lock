@@ -1426,6 +1426,7 @@ dependencies = [
  "esp-hal",
  "esp-println",
  "tropic01",
+ "x25519-dalek",
 ]
 
 [[package]]

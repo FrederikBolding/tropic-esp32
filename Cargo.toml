@@ -24,6 +24,7 @@ esp-println = { version = "0.16.1", features = ["esp32c6"] }
 
 tropic01 = { git = "https://github.com/tropicsquare/libtropic-rs.git", rev = "8239c1acb3cce65445433b1dbb73f72da6227342" }
 embedded-hal-bus = "0.3.0"
+x25519-dalek = { version = "2.0.1", default-features = false }
 
 
 [profile.dev]

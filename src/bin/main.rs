@@ -12,14 +12,25 @@ use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{Output, OutputConfig};
 use esp_hal::main;
+use esp_hal::rng::{Trng, TrngSource};
 use esp_hal::spi::master::{Config, Spi};
 use esp_hal::time::{Duration, Instant};
 use esp_println::println;
-use tropic01::Tropic01;
+use tropic01::{Tropic01, X25519Dalek};
+use x25519_dalek::{PublicKey, StaticSecret};
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
+
+const SH0PRIV: [u8; 32] = [
+    0x28, 0x3f, 0x5a, 0x0f, 0xfc, 0x41, 0xcf, 0x50, 0x98, 0xa8, 0xe1, 0x7d, 0xb6, 0x37, 0x2c, 0x3c,
+    0xaa, 0xd1, 0xee, 0xee, 0xdf, 0x0f, 0x75, 0xbc, 0x3f, 0xbf, 0xcd, 0x9c, 0xab, 0x3d, 0xe9, 0x72,
+];
+const SH0PUB: [u8; 32] = [
+    0xf9, 0x75, 0xeb, 0x3c, 0x2f, 0xd7, 0x90, 0xc9, 0x6f, 0x29, 0x4f, 0x15, 0x57, 0xa5, 0x03, 0x17,
+    0x80, 0xc9, 0xaa, 0xfa, 0x14, 0x0d, 0xa2, 0x8f, 0x55, 0xe7, 0x51, 0x57, 0x37, 0xb2, 0x50, 0x2c,
+];
 
 #[main]
 fn main() -> ! {
@@ -53,11 +64,35 @@ fn main() -> ! {
 
     let mut tropic = Tropic01::new(spi);
 
-    let chip_id = tropic.get_info_chip_id();
+    let chip_id = tropic.get_info_chip_id().unwrap();
 
-    if let Ok(chip_id) = chip_id {
-        println!("Chip ID: {:?}", chip_id);
-    }
+    println!("Chip ID: {:?}", chip_id);
+
+    let fw_version = tropic.get_info_riscv_fw_ver().unwrap();
+    println!("Firmware: {:?}", fw_version);
+
+    println!("Setting up session...");
+
+    // The side-effect of creating TrngSource allows the creation of Trng
+    let _trng_source = TrngSource::new(peripherals.RNG, peripherals.ADC1);
+    let rng = Trng::try_new().unwrap();
+
+    let ephemeral_key = StaticSecret::random_from_rng(rng);
+    let ephemeral_pub_key = PublicKey::from(&ephemeral_key);
+
+    tropic
+        .session_start(
+            &X25519Dalek,
+            SH0PUB.into(),
+            SH0PRIV.into(),
+            ephemeral_pub_key,
+            ephemeral_key,
+            0,
+        )
+        .unwrap();
+
+    let random_number = tropic.get_random_value(1).unwrap();
+    println!("Dice Roll: {}", random_number[0]);
 
     println!("Sleeping...");
     loop {
