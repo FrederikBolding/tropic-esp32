@@ -6,6 +6,7 @@
     holding buffers for the duration of a data transfer."
 )]
 
+use ed25519_dalek::{Signature, VerifyingKey};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
@@ -13,6 +14,7 @@ use esp_hal::delay::Delay;
 use esp_hal::gpio::{Output, OutputConfig};
 use esp_hal::main;
 use esp_hal::rng::{Trng, TrngSource};
+use esp_hal::sha::{Sha, Sha256, ShaAlgorithm};
 use esp_hal::spi::master::{Config, Spi};
 use esp_hal::time::{Duration, Instant};
 use esp_println::println;
@@ -93,6 +95,29 @@ fn main() -> ! {
 
     let random_number = tropic.get_random_value(1).unwrap();
     println!("Dice Roll: {}", random_number[0]);
+
+    let key_slot = 0.into();
+    // tropic.ecc_key_generate(key_slot, tropic01::EccCurve::Ed25519).unwrap();
+
+    let key_read = tropic.ecc_key_read(key_slot).unwrap();
+    let pub_key = VerifyingKey::from_bytes(key_read.pub_key().try_into().unwrap()).unwrap();
+
+    let mut sha_driver = Sha::new(peripherals.SHA);
+
+    let mut digest = sha_driver.start::<Sha256>();
+    digest.update("Hello world!".as_bytes()).unwrap();
+
+    let mut hash = [0; Sha256::DIGEST_LENGTH];
+    digest.finish(&mut hash).unwrap();
+
+    let signature = tropic.eddsa_sign(key_slot, &hash).unwrap();
+
+    println!("Signature: {:?}", signature);
+
+    match pub_key.verify_strict(&hash, &Signature::from_bytes(signature)) {
+        Ok(_) => println!("Signature valid!"),
+        Err(_) => println!("Signature invalid!"),
+    }
 
     println!("Sleeping...");
     loop {
